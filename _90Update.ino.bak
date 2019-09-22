@@ -1,0 +1,162 @@
+#include <ReefAngel_Features.h>
+#include <Globals.h>
+#include <RA_Wifi.h>
+#include <Wire.h>
+#include <OneWire.h>
+#include <Time.h>
+#include <DS1307RTC.h>
+#include <InternalEEPROM.h>
+#include <RA_NokiaLCD.h>
+#include <RA_ATO.h>
+#include <RA_Joystick.h>
+#include <LED.h>
+#include <RA_TempSensor.h>
+#include <Relay.h>
+#include <RA_PWM.h>
+#include <Timer.h>
+#include <Memory.h>
+#include <InternalEEPROM.h>
+#include <RA_Colors.h>
+#include <RA_CustomColors.h>
+#include <Salinity.h>
+#include <RF.h>
+#include <IO.h>
+#include <ORP.h>
+#include <AI.h>
+#include <PH.h>
+#include <WaterLevel.h>
+#include <ReefAngel.h>
+
+////// Place global variable code below here
+//1	Heater
+//2	Moonlight
+//3	Fuge Light
+//4	Return 
+//5	Skimmer
+//6	Reactor
+//7	ATO
+//8	LEDs -> Fan
+boolean ATOTriggered = false;
+unsigned long ATOTime = now();
+////// Place global variable code above here
+
+
+void setup()
+{
+    // This must be the first line
+    ReefAngel.Init();  //Initialize controller
+    // Ports toggled in Feeding Mode
+    ReefAngel.FeedingModePorts = Port4Bit | Port5Bit | Port6Bit;
+    // Ports toggled in Water Change Mode
+    ReefAngel.WaterChangePorts = Port4Bit | Port5Bit | Port6Bit | Port7Bit | Port1Bit;
+    // Ports toggled when Lights On / Off menu entry selected
+    ReefAngel.LightsOnPorts = Port2Bit;
+    ReefAngel.OverheatShutoffPorts = 0;
+    // Use T1 probe as temperature and overheat functions
+    ReefAngel.TempProbe = T1_PROBE;
+    ReefAngel.OverheatProbe = T1_PROBE;
+    // Set the Overheat temperature setting
+    InternalMemory.OverheatTemp_write( 850 );
+
+
+
+    // Ports that are always on
+    ReefAngel.Relay.On( Port4 );
+    ReefAngel.Relay.On( Port3 );
+    ReefAngel.Relay.On( Port5 );
+    ReefAngel.Relay.On( Port6 );
+    ReefAngel.Relay.On( Port8 );
+
+    ////// Place additional initialization code below here
+    ReefAngel.Timer[1].SetInterval(30);
+    ////// Place additional initialization code above here
+}
+
+void loop()
+{
+    //ReefAngel.StandardLights( Port2,21,0,11,0 );
+    //ReefAngel.StandardLights( Port3,22,0,10,0 );
+    ReefAngel.StandardHeater( Port1 );
+    ReefAngel.PWM.DaylightPWMParabola();
+    ReefAngel.PWM.ActinicPWMParabola();
+    ReefAngel.LCD.BacklightOn();
+
+    //if lights should be off, set to zero. Fallback from code above
+    if ((hour() < 12) || (hour() >= 20))
+     {
+       ReefAngel.PWM.SetDaylight(0);
+     }
+    if ((hour() < 11) || (hour() >= 21))
+    {
+        ReefAngel.PWM.SetActinic(0);
+    }
+    
+    static time_t wcTimer;
+    if (ReefAngel.DisplayedMenu == WATERCHANGE_MODE || ReefAngel.DisplayedMenu == FEEDING_MODE) wcTimer=now();
+    if (now()-wcTimer > 0 && now()-wcTimer < 600) 
+    {
+      ReefAngel.Relay.Off(Port5);
+    } 
+    else 
+    {
+      ReefAngel.Relay.On(Port5);
+    }
+    
+    if (hour() == 8 && minute() == 0 && second() == 0)
+    {
+          //ReefAngel.DisplayedMenu = WATERCHANGE_MODE;
+          ReefAngel.FeedingModeStart();
+    }
+    
+        //Moonlights with a phase of total darkness
+        if ((hour() >= 21 || hour() <= 2) || (hour() >= 6 && hour() <= 11))
+        {
+          ReefAngel.Relay.On(Port2);
+        }
+        else
+        {
+          ReefAngel.Relay.Off(Port2);
+        }
+    
+    if (!ReefAngel.HighATO.IsActive())
+    {
+        if(ReefAngel.LowATO.IsActive() && ATOTriggered == false)
+        {
+           ATOTriggered = true;
+           ATOTime = now();
+           ReefAngel.Relay.Off(Port7);
+        }
+        else if (ReefAngel.LowATO.IsActive() && ATOTriggered == true && (now() - ATOTime > 30 ))
+        {
+           ReefAngel.Relay.On(Port7); 
+        }
+        else if (!ReefAngel.LowATO.IsActive())
+        {
+          ATOTriggered = false;
+          ReefAngel.Relay.Off(Port7);
+        }
+    }
+    else
+    {
+        ATOTriggered = false;
+        ReefAngel.Relay.Off(Port7);
+    }
+    
+ //********************************************************************************************************************************
+  // Activate Watch Dog Timer at 6am and 6pm
+
+  if ((now()%86400)==21600) delay(1000);
+
+  if ((now()%86400)==43200) delay(1000);
+
+ //********************************************************************************************************************************
+
+
+    ////// Place your custom code above here
+
+    // This should always be the last line
+    ReefAngel.Portal( "zechenia" );
+    ReefAngel.ShowInterface();
+}
+
+
